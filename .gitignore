@@ -1,0 +1,16 @@
+# Ignore local SQLite database and lock files
+data/*.sqlite
+data/*.sqlite-journal
+data/*.db
+
+# Ignore user uploaded dynamic files but keep directory structure
+uploads/*
+!uploads/.htaccess
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,8 @@
+Options -Indexes
+<FilesMatch "\.(sqlite|db|log|ini|env)$">
+    Require all denied
+</FilesMatch>
+<Directory "data">
+    Require all denied
+</Directory>
+
