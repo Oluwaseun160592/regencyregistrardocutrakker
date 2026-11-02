@@ -10,3 +10,4 @@ sed -i "s/<VirtualHost \*:80>/<VirtualHost \*:$PORT>/g" /etc/apache2/sites-avail
 
 # Start Apache in the foreground
 exec apache2-foreground
+

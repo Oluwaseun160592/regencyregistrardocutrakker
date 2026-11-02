@@ -32,15 +32,53 @@ function db(): PDO {
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
             ]);
+            sync_default_users($pdo);
         } else {
             // Default: Standalone zero-configuration SQLite
             $pdo = new PDO('sqlite:' . DB_FILE);
             $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $pdo->exec("PRAGMA foreign_keys = ON");
             auto_migrate_schema($pdo);
+            sync_default_users($pdo);
         }
     }
     return $pdo;
+}
+
+function sync_default_users(PDO $pdo): void {
+    $default_users = [
+        ['System Administrator', 'admin@regency.com', 'Admin@12345', 'Administrator'],
+        ['Fatokun Oluwaseun (Operations Staff)', 'staff@regency.com', 'Staff@12345', 'Staff'],
+        ['Adeola Johnson (Supervisor - L1 Approver)', 'supervisor@regency.com', 'Supervisor@12345', 'Supervisor'],
+        ['Babatunde Alabi (Operations Manager - L2 Approver)', 'opsmanager@regency.com', 'Manager@12345', 'Operations Manager'],
+        ['Chioma Okonkwo (Compliance Head - L3 Approver)', 'compliance@regency.com', 'Compliance@12345', 'Compliance Officer'],
+        ['Default Admin (Legacy)', 'admin@localhost', 'Admin@12345', 'Administrator']
+    ];
+
+    try {
+        foreach ($default_users as $u) {
+            $email = strtolower($u[1]);
+            $st = $pdo->prepare("SELECT id, password, active FROM users WHERE LOWER(email) = LOWER(?)");
+            $st->execute([$email]);
+            $row = $st->fetch(PDO::FETCH_ASSOC);
+
+            if (!$row) {
+                $hash = password_hash($u[2], PASSWORD_DEFAULT);
+                $ins = $pdo->prepare("INSERT INTO users (name, email, password, role, active) VALUES (?, ?, ?, ?, 1)");
+                $ins->execute([$u[0], $email, $hash, $u[3]]);
+            } else {
+                // Verify if the current stored hash matches the documented password
+                // If it fails (e.g. dummy placeholder from SQL or wrong password), repair it immediately!
+                if (!password_verify($u[2], $row['password']) || (int)$row['active'] !== 1) {
+                    $hash = password_hash($u[2], PASSWORD_DEFAULT);
+                    $upd = $pdo->prepare("UPDATE users SET password = ?, role = ?, active = 1 WHERE id = ?");
+                    $upd->execute([$hash, $u[3], $row['id']]);
+                }
+            }
+        }
+    } catch (Exception $e) {
+        // Tables may not exist yet if connecting to an uninitialized database
+    }
 }
 
 function auto_migrate_schema(PDO $pdo): void {

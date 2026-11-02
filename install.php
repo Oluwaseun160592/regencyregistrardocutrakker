@@ -167,17 +167,26 @@ $default_users = [
     ]
 ];
 
-$stmt_find = $pdo->prepare("SELECT id FROM users WHERE email=?");
+$stmt_find = $pdo->prepare("SELECT id FROM users WHERE LOWER(email)=LOWER(?)");
 $stmt_insert = $pdo->prepare("INSERT INTO users(name,email,password,role) VALUES(?,?,?,?)");
+$stmt_update = $pdo->prepare("UPDATE users SET password=?, role=?, active=1 WHERE id=?");
 
 foreach ($default_users as $u) {
     $stmt_find->execute([$u['email']]);
-    if (!$stmt_find->fetchColumn()) {
+    $existing_id = $stmt_find->fetchColumn();
+    $hash = password_hash($u['password'], PASSWORD_DEFAULT);
+    if (!$existing_id) {
         $stmt_insert->execute([
             $u['name'],
-            $u['email'],
-            password_hash($u['password'], PASSWORD_DEFAULT),
+            strtolower($u['email']),
+            $hash,
             $u['role']
+        ]);
+    } else {
+        $stmt_update->execute([
+            $hash,
+            $u['role'],
+            $existing_id
         ]);
     }
 }
@@ -290,7 +299,7 @@ if ($ao_count == 0) {
         <div class="col-lg-9">
             <div class="card overflow-hidden">
                 <div class="header-box text-center">
-                    <img src="assets/logo.png" alt="<?= h(COMPANY_NAME) ?>" style="max-height: 55px; background: white; padding: 4px 10px; border-radius: 6px;" class="mb-3">
+                    <img src="assets/logo.png" alt="<?= h(COMPANY_NAME) ?>" style="max-height: 64px; background: white; padding: 4px; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.25);" class="mb-3">
                     <h2 class="mb-1 text-white"><?= h(COMPANY_NAME) ?></h2>
                     <p class="mb-0 text-white-50">Registrar Document Tracker with 3-Level Approvals & Collection Tracking</p>
                 </div>

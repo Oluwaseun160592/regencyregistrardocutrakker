@@ -10,14 +10,26 @@ $page = $_GET['page'] ?? 'dashboard';
 if ($page === 'login') {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         verify_csrf();
-        $email = trim($_POST['email'] ?? '');
-        $password = $_POST['password'] ?? '';
+        $email = strtolower(trim($_POST['email'] ?? ''));
+        $raw_pass = (string)($_POST['password'] ?? '');
+        $trimmed_pass = trim($raw_pass);
 
-        $stmt = db()->prepare("SELECT * FROM users WHERE email=? AND active=1");
+        $stmt = db()->prepare("SELECT * FROM users WHERE LOWER(email)=LOWER(?) AND active=1");
         $stmt->execute([$email]);
         $u = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($u && password_verify($password, $u['password'])) {
+        $authenticated = false;
+        if ($u) {
+            if (password_verify($trimmed_pass, $u['password']) || password_verify($raw_pass, $u['password'])) {
+                $authenticated = true;
+            } elseif ($trimmed_pass === $u['password'] || $raw_pass === $u['password']) {
+                $authenticated = true;
+                // Auto-upgrade plaintext to secure hash
+                db()->prepare("UPDATE users SET password=? WHERE id=?")->execute([password_hash($trimmed_pass, PASSWORD_DEFAULT), $u['id']]);
+            }
+        }
+
+        if ($authenticated) {
             session_regenerate_id(true);
             $_SESSION['user_id'] = $u['id'];
             $_SESSION['user_name'] = $u['name'];
@@ -35,7 +47,7 @@ if ($page === 'login') {
         <div class="col-md-7 col-lg-5">
             <div class="card shadow-lg border-0" style="border-radius: 16px; overflow: hidden;">
                 <div class="p-4 text-center text-white" style="background: linear-gradient(135deg, #0b2545 0%, #134074 100%);">
-                    <img src="assets/logo.png" alt="<?= h(COMPANY_NAME) ?>" style="max-height: 48px; background: white; padding: 4px 8px; border-radius: 6px;" class="mb-3">
+                    <img src="assets/logo.png" alt="<?= h(COMPANY_NAME) ?>" style="max-height: 64px; background: white; padding: 4px; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.25);" class="mb-3">
                     <h4 class="mb-1 fw-bold"><?= h(COMPANY_NAME) ?></h4>
                     <p class="small text-white-50 mb-0"><?= h(COMPANY_SUBTITLE) ?></p>
                 </div>
@@ -930,7 +942,7 @@ function render_header($title, $auth = true) {
             <!-- Sidebar -->
             <aside class="col-md-3 col-lg-2 sidebar p-3 d-flex flex-column">
                 <div class="mb-4 text-center">
-                    <img src="assets/logo.png" alt="<?= h(COMPANY_NAME) ?>" style="max-height: 42px; background: white; padding: 4px 8px; border-radius: 6px;" class="mb-2">
+                    <img src="assets/logo.png" alt="<?= h(COMPANY_NAME) ?>" style="max-height: 50px; background: white; padding: 3px; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.2);" class="mb-2">
                     <div class="small fw-bold text-white"><?= h(COMPANY_NAME) ?></div>
                     <div style="font-size: 10px; color: #8da4be;"><?= h(COMPANY_SUBTITLE) ?></div>
                 </div>

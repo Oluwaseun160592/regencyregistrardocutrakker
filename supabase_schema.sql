@@ -129,14 +129,14 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
 -- INITIAL SEED DATA
 -- =====================================================================
 
--- Default Users (Passwords hashed with standard bcrypt: Admin@12345, Staff@12345, etc.)
-INSERT INTO public.users (name, email, password, role) VALUES
-('System Administrator', 'admin@regency.com', '$2y$10$wT0Xh9k41v7173P2B4t0qO7yv0X2bH6rM9B9Pz3pW8K0G2Z7u4D.G', 'Administrator'),
-('Fatokun Oluwaseun (Operations Staff)', 'staff@regency.com', '$2y$10$eR/vFkF5pE8Fh3z4L8zE6OaK2X5j2f.qO9N6Y5j7P9r0F3j8V5T2W', 'Staff'),
-('Adeola Johnson (Supervisor - L1 Approver)', 'supervisor@regency.com', '$2y$10$N2G8r7f.T5L8F9K4M3zE6OaK2X5j2f.qO9N6Y5j7P9r0F3j8V5T2W', 'Supervisor'),
-('Babatunde Alabi (Operations Manager - L2 Approver)', 'opsmanager@regency.com', '$2y$10$P8M9N2G8r7f.T5L8F9K4M3zE6OaK2X5j2f.qO9N6Y5j7P9r0F3j8V5T2W', 'Operations Manager'),
-('Chioma Okonkwo (Compliance Head - L3 Approver)', 'compliance@regency.com', '$2y$10$Q1R2S3T4U5V6W7X8Y9Z0a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q', 'Compliance Officer')
-ON CONFLICT (email) DO NOTHING;
+-- Default Users (Passwords hashed with verified bcrypt for Admin@12345, Staff@12345, etc.)
+INSERT INTO public.users (name, email, password, role, active) VALUES
+('System Administrator', 'admin@regency.com', '$2b$10$ZBHeX8IbV58a5lQfFLiBYeWM9QJPtHUo1UtR2Ua7x55AHaSI0V3U2', 'Administrator', 1),
+('Fatokun Oluwaseun (Operations Staff)', 'staff@regency.com', '$2b$10$OXXGPJmWnxNVO2Yqp9wuQeU0/tXjiSW9PfRMzIFCC7ifdbd/BxZv6', 'Staff', 1),
+('Adeola Johnson (Supervisor - L1 Approver)', 'supervisor@regency.com', '$2b$10$sO2WUf/aY1wrhCsKDsV5mOdLCFcEoK1Sgnp2uGGYo/cFSiO1agGtu', 'Supervisor', 1),
+('Babatunde Alabi (Operations Manager - L2 Approver)', 'opsmanager@regency.com', '$2b$10$irVkURLl4/bVdnMTbrrVOuTLVj02vBnbyKfU3uxVEJIcfKZYtG4P.', 'Operations Manager', 1),
+('Chioma Okonkwo (Compliance Head - L3 Approver)', 'compliance@regency.com', '$2b$10$QOaz4Mr66NUcXjrZP04ye.TdblpyScd5/2ZpwVOsbQOYQbPNgzqNC', 'Compliance Officer', 1)
+ON CONFLICT (email) DO UPDATE SET password = EXCLUDED.password, active = 1;
 
 -- Default Account Officers
 INSERT INTO public.account_officers (name, officer_code, email, phone, department, active) VALUES

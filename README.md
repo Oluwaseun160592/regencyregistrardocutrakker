@@ -106,3 +106,4 @@ To use a persistent Supabase database instead of SQLite:
 3. In your Render Dashboard (or local `.env`), add an Environment Variable:
    - **Key**: `DATABASE_URL`
    - **Value**: `postgres://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres`
+
