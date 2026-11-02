@@ -2957,6 +2957,9 @@ case 'account_officers':
 // =============================================================
 // PAGE: User Management (Admin Only)
 // =============================================================
+// =============================================================
+// PAGE: User Management (Admin Only — Single & Multi-User Creation)
+// =============================================================
 case 'users':
     if (!can_manage_users($currentUser)) {
         flash('danger', 'Unauthorized access: Administrator rights required.');
@@ -3001,21 +3004,150 @@ case 'users':
             exit;
         }
 
-        // Default: Create User
+        if ($action === 'delete_user') {
+            $user_id = (int)($_POST['user_id'] ?? 0);
+            if ($user_id === (int)$currentUser['id']) {
+                flash('danger', 'Security Restriction: You cannot delete your own account.');
+            } else {
+                $u = db()->prepare("SELECT name, email FROM users WHERE id=?");
+                $u->execute([$user_id]);
+                $user_data = $u->fetch(PDO::FETCH_ASSOC);
+                if ($user_data) {
+                    db()->prepare("DELETE FROM users WHERE id=?")->execute([$user_id]);
+                    audit('Deleted User', null, 'Deleted user ' . $user_data['name'] . ' (' . $user_data['email'] . ')');
+                    flash('success', 'User ' . $user_data['name'] . ' has been deleted.');
+                }
+            }
+            header('Location: index.php?page=users');
+            exit;
+        }
+
+        // Multi-User Batch Creation
+        if ($action === 'bulk_create') {
+            $created = 0;
+            $updated = 0;
+            $errors = [];
+
+            // 1. Process Grid Rows
+            $rows = $_POST['users'] ?? [];
+            if (is_array($rows)) {
+                foreach ($rows as $i => $row) {
+                    $name = trim($row['name'] ?? '');
+                    $email = strtolower(trim($row['email'] ?? ''));
+                    $pass = trim($row['password'] ?? '');
+                    $role = trim($row['role'] ?? 'Staff');
+
+                    if (empty($name) && empty($email)) continue;
+
+                    if (!$name || !$email || !$pass) {
+                        $errors[] = "Row #" . ($i + 1) . ": Name, email, and password are required.";
+                        continue;
+                    }
+
+                    $st = db()->prepare("SELECT id FROM users WHERE LOWER(email)=LOWER(?)");
+                    $st->execute([$email]);
+                    $existing_id = $st->fetchColumn();
+                    $hash = password_hash($pass, PASSWORD_DEFAULT);
+
+                    if ($existing_id) {
+                        db()->prepare("UPDATE users SET name=?, password=?, role=?, active=1 WHERE id=?")
+                            ->execute([$name, $hash, $role, $existing_id]);
+                        $updated++;
+                        audit('Updated User', null, "Batch updated user $email as $role");
+                    } else {
+                        db()->prepare("INSERT INTO users (name, email, password, role, active) VALUES (?, ?, ?, ?, 1)")
+                            ->execute([$name, $email, $hash, $role]);
+                        $created++;
+                        audit('Created User', null, "Batch created user $email as $role");
+                    }
+                }
+            }
+
+            // 2. Process CSV / Plaintext Paste
+            $bulk_text = trim($_POST['bulk_text'] ?? '');
+            if (!empty($bulk_text)) {
+                $lines = explode("\n", str_replace("\r", "", $bulk_text));
+                foreach ($lines as $ln => $line) {
+                    $line = trim($line);
+                    if (empty($line) || str_starts_with($line, '#')) continue;
+
+                    $parts = str_contains($line, "\t") ? explode("\t", $line) : explode(",", $line);
+                    $name = trim($parts[0] ?? '');
+                    $email = strtolower(trim($parts[1] ?? ''));
+                    $pass = trim($parts[2] ?? '');
+                    $role = trim($parts[3] ?? 'Staff');
+
+                    $valid_roles = ['Staff', 'Supervisor', 'Operations Manager', 'Compliance Officer', 'Administrator'];
+                    if (!in_array($role, $valid_roles, true)) {
+                        $matched = 'Staff';
+                        foreach ($valid_roles as $vr) {
+                            if (stripos($role, $vr) !== false || stripos($vr, $role) !== false) {
+                                $matched = $vr;
+                                break;
+                            }
+                        }
+                        $role = $matched;
+                    }
+
+                    if (!$name || !$email || !$pass) {
+                        $errors[] = "Line " . ($ln + 1) . ": Expected format: Full Name, Email, Password, Role";
+                        continue;
+                    }
+
+                    $st = db()->prepare("SELECT id FROM users WHERE LOWER(email)=LOWER(?)");
+                    $st->execute([$email]);
+                    $existing_id = $st->fetchColumn();
+                    $hash = password_hash($pass, PASSWORD_DEFAULT);
+
+                    if ($existing_id) {
+                        db()->prepare("UPDATE users SET name=?, password=?, role=?, active=1 WHERE id=?")
+                            ->execute([$name, $hash, $role, $existing_id]);
+                        $updated++;
+                        audit('Updated User', null, "CSV updated user $email as $role");
+                    } else {
+                        db()->prepare("INSERT INTO users (name, email, password, role, active) VALUES (?, ?, ?, ?, 1)")
+                            ->execute([$name, $email, $hash, $role]);
+                        $created++;
+                        audit('Created User', null, "CSV created user $email as $role");
+                    }
+                }
+            }
+
+            $results = [];
+            if ($created > 0) $results[] = "Successfully created <b>$created</b> user account(s).";
+            if ($updated > 0) $results[] = "Updated <b>$updated</b> existing user account(s).";
+            if (!empty($results)) flash('success', implode(' ', $results));
+            if (!empty($errors)) flash('warning', "Batch notices:<br>" . implode('<br>', array_slice($errors, 0, 5)));
+
+            header('Location: index.php?page=users');
+            exit;
+        }
+
+        // Single User Creation
         $name = trim($_POST['name'] ?? '');
-        $email = trim($_POST['email'] ?? '');
-        $password = $_POST['password'] ?? '';
+        $email = strtolower(trim($_POST['email'] ?? ''));
+        $password = trim($_POST['password'] ?? '');
         $role = $_POST['role'] ?? 'Staff';
 
         if ($name && $email && $password) {
-            try {
-                $stmt = db()->prepare("INSERT INTO users (name, email, password, role) VALUES (?,?,?,?)");
-                $stmt->execute([$name, $email, password_hash($password, PASSWORD_DEFAULT), $role]);
+            $chk = db()->prepare("SELECT id FROM users WHERE LOWER(email)=LOWER(?)");
+            $chk->execute([$email]);
+            $existing_id = $chk->fetchColumn();
+            $hash = password_hash($password, PASSWORD_DEFAULT);
+
+            if ($existing_id) {
+                db()->prepare("UPDATE users SET name=?, password=?, role=?, active=1 WHERE id=?")
+                    ->execute([$name, $hash, $role, $existing_id]);
+                audit('Updated User', null, 'Updated user ' . $email . ' as ' . $role);
+                flash('success', "User account for $email was already present and has been updated.");
+            } else {
+                db()->prepare("INSERT INTO users (name, email, password, role, active) VALUES (?,?,?,?,1)")
+                    ->execute([$name, $email, $hash, $role]);
                 audit('Created User', null, 'Created user ' . $email . ' as ' . $role);
-                flash('success', 'User account created successfully.');
-            } catch (Exception $e) {
-                flash('danger', 'Could not create user. Email address may already be registered.');
+                flash('success', "User account for $name ($email) created successfully.");
             }
+        } else {
+            flash('danger', 'Full name, email address, and temporary password are required.');
         }
         header('Location: index.php?page=users');
         exit;
@@ -3025,28 +3157,76 @@ case 'users':
 
     render_header('User & Role Management');
     ?>
-    <div class="row g-4">
-        <div class="col-lg-8">
-            <div class="card shadow-sm">
-                <div class="card-header bg-white py-3">
-                    <h5 class="mb-0 fw-bold" style="color:#0b2545;"><i class="bi bi-people me-2 text-primary"></i> Active User Directory</h5>
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-2 border-bottom">
+        <div>
+            <h4 class="mb-1 fw-bold" style="color:#0b2545;">
+                <i class="bi bi-people-fill me-2 text-primary"></i> User & Access Control Management
+            </h4>
+            <p class="text-muted small mb-0">Create multiple users, configure approval roles, and manage permissions.</p>
+        </div>
+        <div class="d-flex gap-2 mt-3 mt-md-0">
+            <button type="button" class="btn btn-primary shadow-sm" onclick="showTab('batch-tab')">
+                <i class="bi bi-person-plus-fill me-1"></i> Create Multiple Users
+            </button>
+            <button type="button" class="btn btn-outline-primary" onclick="showTab('single-tab')">
+                <i class="bi bi-person-plus me-1"></i> Add Single User
+            </button>
+        </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <ul class="nav nav-pills mb-4" id="userManagementTabs" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active fw-semibold" id="directory-tab" data-bs-toggle="pill" data-bs-target="#tab-directory" type="button">
+                <i class="bi bi-table me-1"></i> User Directory <span class="badge bg-light text-dark ms-1"><?= count($users) ?></span>
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link fw-semibold" id="batch-tab" data-bs-toggle="pill" data-bs-target="#tab-batch" type="button">
+                <i class="bi bi-people-fill me-1 text-warning"></i> Batch / Multiple User Creator
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link fw-semibold" id="single-tab" data-bs-toggle="pill" data-bs-target="#tab-single" type="button">
+                <i class="bi bi-person-plus me-1"></i> Add Single User
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="userManagementTabsContent">
+        <!-- TAB 1: User Directory -->
+        <div class="tab-pane fade show active" id="tab-directory">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold" style="color:#0b2545;">
+                        <i class="bi bi-shield-lock me-2 text-primary"></i> Registered System Users
+                    </h5>
+                    <span class="text-muted small">Total: <b><?= count($users) ?></b> active and inactive accounts</span>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
                         <thead class="table-light">
                             <tr>
-                                <th>Name</th>
-                                <th>Email</th>
+                                <th>#</th>
+                                <th>Full Name</th>
+                                <th>Email Address</th>
                                 <th>Role / Approval Tier</th>
-                                <th>Status</th>
+                                <th>Account Status</th>
+                                <th>Created</th>
                                 <th class="text-end">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($users as $u): ?>
+                            <?php foreach ($users as $idx => $u): ?>
                             <tr>
-                                <td class="fw-bold"><?= h($u['name']) ?></td>
-                                <td><?= h($u['email']) ?></td>
+                                <td class="text-muted small"><?= $idx + 1 ?></td>
+                                <td class="fw-bold">
+                                    <?= h($u['name']) ?>
+                                    <?php if ($u['id'] == $currentUser['id']): ?>
+                                        <span class="badge bg-secondary ms-1" style="font-size:10px;">You</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><code><?= h($u['email']) ?></code></td>
                                 <td>
                                     <?php 
                                     $role_badges = [
@@ -3060,12 +3240,15 @@ case 'users':
                                     ?>
                                     <span class="badge <?= $b ?>"><?= h($u['role']) ?></span>
                                 </td>
-                                <td><?= $u['active'] ? '<span class="badge bg-success-subtle text-success">Active</span>' : '<span class="badge bg-danger-subtle text-danger">Inactive</span>' ?></td>
+                                <td>
+                                    <?= $u['active'] ? '<span class="badge bg-success-subtle text-success">Active</span>' : '<span class="badge bg-danger-subtle text-danger">Inactive</span>' ?>
+                                </td>
+                                <td class="small text-muted"><?= substr($u['created_at'] ?? '', 0, 10) ?></td>
                                 <td class="text-end">
                                     <div class="btn-group btn-group-sm">
                                         <!-- Toggle Status -->
                                         <?php if ($u['id'] != $currentUser['id']): ?>
-                                        <form method="post" action="index.php?page=users" style="display:inline;" onsubmit="return confirm('Toggle status for this user?');">
+                                        <form method="post" action="index.php?page=users" style="display:inline;" onsubmit="return confirm('Toggle active status for <?= h($u['name']) ?>?');">
                                             <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
                                             <input type="hidden" name="action" value="toggle_status">
                                             <input type="hidden" name="user_id" value="<?= $u['id'] ?>">
@@ -3075,10 +3258,22 @@ case 'users':
                                         </form>
                                         <?php endif; ?>
 
-                                        <!-- Reset Password Trigger -->
+                                        <!-- Reset Password -->
                                         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#resetUserModal<?= $u['id'] ?>" title="Reset Password">
                                             <i class="bi bi-key"></i>
                                         </button>
+
+                                        <!-- Delete User -->
+                                        <?php if ($u['id'] != $currentUser['id']): ?>
+                                        <form method="post" action="index.php?page=users" style="display:inline;" onsubmit="return confirm('Are you sure you want to permanently delete <?= h($u['name']) ?> (<?= h($u['email']) ?>)?');">
+                                            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+                                            <input type="hidden" name="action" value="delete_user">
+                                            <input type="hidden" name="user_id" value="<?= $u['id'] ?>">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm" title="Delete User">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                        <?php endif; ?>
                                     </div>
 
                                     <!-- Modal: Reset Password -->
@@ -3094,12 +3289,12 @@ case 'users':
                                                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                                                     </div>
                                                     <div class="modal-body p-3">
-                                                        <div class="small text-muted mb-2">Reset password for <b><?= h($u['name']) ?></b>:</div>
+                                                        <div class="small text-muted mb-2">New password for <b><?= h($u['name']) ?></b>:</div>
                                                         <input type="password" name="new_password" class="form-control" placeholder="New password (min 6 chars)" minlength="6" required>
                                                     </div>
                                                     <div class="modal-footer py-2">
                                                         <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Cancel</button>
-                                                        <button type="submit" class="btn btn-sm btn-dark">Update</button>
+                                                        <button type="submit" class="btn btn-sm btn-dark">Update Password</button>
                                                     </div>
                                                 </form>
                                             </div>
@@ -3114,46 +3309,237 @@ case 'users':
             </div>
         </div>
 
-        <div class="col-lg-4">
-            <div class="card shadow-sm">
-                <div class="card-header bg-white py-3">
-                    <h5 class="mb-0 fw-bold" style="color:#0b2545;"><i class="bi bi-person-plus me-2 text-primary"></i> Add New User</h5>
+        <!-- TAB 2: Batch / Multiple User Creator -->
+        <div class="tab-pane fade" id="tab-batch">
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-0 fw-bold" style="color:#0b2545;">
+                            <i class="bi bi-grid-3x3-gap-fill me-2 text-warning"></i> Multi-User Creation Grid
+                        </h5>
+                        <small class="text-muted">Enter multiple user accounts to create all of them in a single batch.</small>
+                    </div>
+                    <div class="d-flex gap-2 mt-2 mt-md-0">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="prefillStandardRoles()">
+                            <i class="bi bi-magic me-1"></i> Pre-Fill 5 Standard Roles
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="addMultiUserRow()">
+                            <i class="bi bi-plus-circle me-1"></i> Add Another Row
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body p-4">
                     <form method="post" action="index.php?page=users">
                         <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
-                        <input type="hidden" name="action" value="create">
-                        
-                        <div class="mb-3">
-                            <label class="form-label small fw-semibold">FULL NAME *</label>
-                            <input type="text" name="name" class="form-control" placeholder="e.g. Babatunde Alabi" required>
+                        <input type="hidden" name="action" value="bulk_create">
+
+                        <div class="table-responsive mb-3">
+                            <table class="table table-bordered align-middle" id="multiUserTable">
+                                <thead class="table-light small fw-bold">
+                                    <tr>
+                                        <th style="width:25%;">FULL NAME *</th>
+                                        <th style="width:30%;">EMAIL ADDRESS *</th>
+                                        <th style="width:20%;">PASSWORD *</th>
+                                        <th style="width:20%;">ROLE & TIER *</th>
+                                        <th style="width:5%;" class="text-center">RM</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="multiUserBody">
+                                    <!-- Dynamic rows inserted by JavaScript or default rows -->
+                                    <tr>
+                                        <td><input type="text" name="users[0][name]" class="form-control form-control-sm" placeholder="e.g. Babatunde Alabi" required></td>
+                                        <td><input type="email" name="users[0][email]" class="form-control form-control-sm" placeholder="b.alabi@regency.com" required></td>
+                                        <td><input type="text" name="users[0][password]" class="form-control form-control-sm" placeholder="Pass@12345" required></td>
+                                        <td>
+                                            <select name="users[0][role]" class="form-select form-select-sm">
+                                                <option value="Staff">Staff (Initiator)</option>
+                                                <option value="Supervisor">Supervisor (Level 1)</option>
+                                                <option value="Operations Manager">Operations Manager (Level 2)</option>
+                                                <option value="Compliance Officer">Compliance Officer (Level 3)</option>
+                                                <option value="Administrator">Administrator</option>
+                                            </select>
+                                        </td>
+                                        <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeMultiUserRow(this)"><i class="bi bi-x"></i></button></td>
+                                    </tr>
+                                    <tr>
+                                        <td><input type="text" name="users[1][name]" class="form-control form-control-sm" placeholder="e.g. Adeola Johnson"></td>
+                                        <td><input type="email" name="users[1][email]" class="form-control form-control-sm" placeholder="a.johnson@regency.com"></td>
+                                        <td><input type="text" name="users[1][password]" class="form-control form-control-sm" placeholder="Pass@12345"></td>
+                                        <td>
+                                            <select name="users[1][role]" class="form-select form-select-sm">
+                                                <option value="Supervisor" selected>Supervisor (Level 1)</option>
+                                                <option value="Staff">Staff (Initiator)</option>
+                                                <option value="Operations Manager">Operations Manager (Level 2)</option>
+                                                <option value="Compliance Officer">Compliance Officer (Level 3)</option>
+                                                <option value="Administrator">Administrator</option>
+                                            </select>
+                                        </td>
+                                        <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeMultiUserRow(this)"><i class="bi bi-x"></i></button></td>
+                                    </tr>
+                                    <tr>
+                                        <td><input type="text" name="users[2][name]" class="form-control form-control-sm" placeholder="e.g. Chioma Okonkwo"></td>
+                                        <td><input type="email" name="users[2][email]" class="form-control form-control-sm" placeholder="c.okonkwo@regency.com"></td>
+                                        <td><input type="text" name="users[2][password]" class="form-control form-control-sm" placeholder="Pass@12345"></td>
+                                        <td>
+                                            <select name="users[2][role]" class="form-select form-select-sm">
+                                                <option value="Compliance Officer" selected>Compliance Officer (Level 3)</option>
+                                                <option value="Staff">Staff (Initiator)</option>
+                                                <option value="Supervisor">Supervisor (Level 1)</option>
+                                                <option value="Operations Manager">Operations Manager (Level 2)</option>
+                                                <option value="Administrator">Administrator</option>
+                                            </select>
+                                        </td>
+                                        <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeMultiUserRow(this)"><i class="bi bi-x"></i></button></td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label small fw-semibold">EMAIL ADDRESS *</label>
-                            <input type="email" name="email" class="form-control" placeholder="name@regency.com" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label small fw-semibold">TEMPORARY PASSWORD *</label>
-                            <input type="password" name="password" class="form-control" placeholder="••••••••" required>
-                        </div>
+
                         <div class="mb-4">
-                            <label class="form-label small fw-semibold">ROLE & APPROVAL RESPONSIBILITY *</label>
-                            <select name="role" class="form-select" required>
-                                <option value="Staff">Staff (Initiator / Submissions)</option>
-                                <option value="Supervisor">Supervisor (Level 1 Reviewer)</option>
-                                <option value="Operations Manager">Operations Manager (Level 2 Approver)</option>
-                                <option value="Compliance Officer">Compliance Officer (Level 3 Approver)</option>
-                                <option value="Administrator">Administrator (Full Control)</option>
-                            </select>
+                            <label class="form-label small fw-bold text-muted">
+                                <i class="bi bi-filetype-csv me-1"></i> OPTIONAL: Quick Paste (CSV or Tab-Delimited)
+                            </label>
+                            <textarea name="bulk_text" class="form-control font-monospace" rows="4" placeholder="Format per line: Full Name, Email, Password, Role&#10;e.g.&#10;David Adeleke, d.adeleke@regency.com, David@12345, Staff&#10;Funke Akindele, f.akindele@regency.com, Funke@12345, Supervisor"></textarea>
+                            <small class="text-muted">You can fill the table above, paste lines here, or do both. Blank rows will be skipped safely.</small>
                         </div>
-                        <button type="submit" class="btn btn-primary w-100 shadow-sm">
-                            <i class="bi bi-person-check me-1"></i> Create User Account
-                        </button>
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <button type="button" class="btn btn-outline-secondary" onclick="addMultiUserRow()">
+                                <i class="bi bi-plus-lg me-1"></i> Add Another Row
+                            </button>
+                            <button type="submit" class="btn btn-primary px-4 py-2 shadow-sm">
+                                <i class="bi bi-check2-all me-2"></i> Create All Multiple Users Now
+                            </button>
+                        </div>
                     </form>
                 </div>
             </div>
         </div>
+
+        <!-- TAB 3: Single User Form -->
+        <div class="tab-pane fade" id="tab-single">
+            <div class="row justify-content-center">
+                <div class="col-lg-6">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header bg-white py-3">
+                            <h5 class="mb-0 fw-bold" style="color:#0b2545;">
+                                <i class="bi bi-person-plus me-2 text-primary"></i> Add Single User
+                            </h5>
+                        </div>
+                        <div class="card-body p-4">
+                            <form method="post" action="index.php?page=users">
+                                <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="create">
+                                
+                                <div class="mb-3">
+                                    <label class="form-label small fw-semibold">FULL NAME *</label>
+                                    <input type="text" name="name" class="form-control" placeholder="e.g. Babatunde Alabi" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-semibold">EMAIL ADDRESS *</label>
+                                    <input type="email" name="email" class="form-control" placeholder="name@regency.com" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-semibold">TEMPORARY PASSWORD *</label>
+                                    <input type="password" name="password" class="form-control" placeholder="••••••••" required>
+                                </div>
+                                <div class="mb-4">
+                                    <label class="form-label small fw-semibold">ROLE & APPROVAL RESPONSIBILITY *</label>
+                                    <select name="role" class="form-select" required>
+                                        <option value="Staff">Staff (Initiator / Submissions)</option>
+                                        <option value="Supervisor">Supervisor (Level 1 Reviewer)</option>
+                                        <option value="Operations Manager">Operations Manager (Level 2 Approver)</option>
+                                        <option value="Compliance Officer">Compliance Officer (Level 3 Approver)</option>
+                                        <option value="Administrator">Administrator (Full Control)</option>
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100 shadow-sm py-2">
+                                    <i class="bi bi-person-check me-1"></i> Create Single User Account
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <script>
+    let rowIndex = 3;
+
+    function showTab(tabId) {
+        const trigger = document.getElementById(tabId);
+        if (trigger) {
+            const tab = new bootstrap.Tab(trigger);
+            tab.show();
+        }
+    }
+
+    function addMultiUserRow() {
+        const tbody = document.getElementById('multiUserBody');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><input type="text" name="users[${rowIndex}][name]" class="form-control form-control-sm" placeholder="Full Name" required></td>
+            <td><input type="email" name="users[${rowIndex}][email]" class="form-control form-control-sm" placeholder="email@regency.com" required></td>
+            <td><input type="text" name="users[${rowIndex}][password]" class="form-control form-control-sm" placeholder="Password" required></td>
+            <td>
+                <select name="users[${rowIndex}][role]" class="form-select form-select-sm">
+                    <option value="Staff">Staff (Initiator)</option>
+                    <option value="Supervisor">Supervisor (Level 1)</option>
+                    <option value="Operations Manager">Operations Manager (Level 2)</option>
+                    <option value="Compliance Officer">Compliance Officer (Level 3)</option>
+                    <option value="Administrator">Administrator</option>
+                </select>
+            </td>
+            <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeMultiUserRow(this)"><i class="bi bi-x"></i></button></td>
+        `;
+        tbody.appendChild(tr);
+        rowIndex++;
+    }
+
+    function removeMultiUserRow(btn) {
+        const row = btn.closest('tr');
+        const tbody = document.getElementById('multiUserBody');
+        if (tbody.rows.length > 1) {
+            row.remove();
+        } else {
+            alert('At least one row is required in the multi-user creator.');
+        }
+    }
+
+    function prefillStandardRoles() {
+        const tbody = document.getElementById('multiUserBody');
+        tbody.innerHTML = '';
+        const standards = [
+            { name: 'Fatokun Oluwaseun (Operations Staff)', email: 'staff@regency.com', pass: 'Staff@12345', role: 'Staff' },
+            { name: 'Adeola Johnson (Supervisor)', email: 'supervisor@regency.com', pass: 'Supervisor@12345', role: 'Supervisor' },
+            { name: 'Babatunde Alabi (Operations Manager)', email: 'opsmanager@regency.com', pass: 'Manager@12345', role: 'Operations Manager' },
+            { name: 'Chioma Okonkwo (Compliance Head)', email: 'compliance@regency.com', pass: 'Compliance@12345', role: 'Compliance Officer' },
+            { name: 'System Administrator', email: 'admin@regency.com', pass: 'Admin@12345', role: 'Administrator' }
+        ];
+
+        standards.forEach((s, idx) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><input type="text" name="users[${idx}][name]" value="${s.name}" class="form-control form-control-sm" required></td>
+                <td><input type="email" name="users[${idx}][email]" value="${s.email}" class="form-control form-control-sm" required></td>
+                <td><input type="text" name="users[${idx}][password]" value="${s.pass}" class="form-control form-control-sm" required></td>
+                <td>
+                    <select name="users[${idx}][role]" class="form-select form-select-sm">
+                        <option value="Staff" ${s.role === 'Staff' ? 'selected' : ''}>Staff (Initiator)</option>
+                        <option value="Supervisor" ${s.role === 'Supervisor' ? 'selected' : ''}>Supervisor (Level 1)</option>
+                        <option value="Operations Manager" ${s.role === 'Operations Manager' ? 'selected' : ''}>Operations Manager (Level 2)</option>
+                        <option value="Compliance Officer" ${s.role === 'Compliance Officer' ? 'selected' : ''}>Compliance Officer (Level 3)</option>
+                        <option value="Administrator" ${s.role === 'Administrator' ? 'selected' : ''}>Administrator</option>
+                    </select>
+                </td>
+                <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeMultiUserRow(this)"><i class="bi bi-x"></i></button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+        rowIndex = standards.length;
+    }
+    </script>
     <?php
     render_footer();
     break;

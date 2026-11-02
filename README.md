@@ -70,7 +70,12 @@ The system automatically initializes core tables and seeds all 5 operational rol
 4. **Dynamic Account Officer / Relationship Manager Registry**:
    - Manage Relationship Managers with Name, Staff ID/Code, Email, Phone, and Department.
    - Safe Document Protection: Reassign existing documents with 1-click if an officer changes.
-5. **Comprehensive Directory of 22 Nigerian Registrars**:
+5. **Multi-User Batch Creator & User Management**:
+   - Both `admin@localhost` and `admin@regency.com` can create multiple users in a single batch.
+   - Interactive multi-row dynamic grid with 1-click role pre-filling.
+   - Direct CSV / Tab-delimited bulk paste import (`Name, Email, Password, Role`).
+   - Account activation/deactivation, instant password reset, and user deletion.
+6. **Comprehensive Directory of 22 Nigerian Registrars**:
    - Complete directory of SEC-registered capital market registrars (Africa Prudential, First Registrars, Meristem, Greenwich, EDC, CardinalStone, Veritas/Zenith, etc.) with listed equities and contact locations.
 6. **Flexible Database Architecture**:
    - **Zero-config SQLite**: Built-in, instant setup with auto-migration.
