@@ -44,6 +44,111 @@ function db(): PDO {
 }
 
 function auto_migrate_schema(PDO $pdo): void {
+    // Ensure core tables exist (users, documents, status_history, audit_logs)
+    $has_users = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")->fetchColumn();
+    if (!$has_users) {
+        $pdo->exec("
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'Staff',
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reference_no TEXT NOT NULL UNIQUE,
+            client_name TEXT,
+            client_account TEXT,
+            chn_number TEXT,
+            account_officer TEXT,
+            document_type TEXT NOT NULL,
+            stock_symbol TEXT,
+            units INTEGER DEFAULT 0,
+            description TEXT,
+            priority TEXT NOT NULL DEFAULT 'Normal',
+            submission_date TEXT NOT NULL,
+            due_date TEXT,
+            status TEXT NOT NULL DEFAULT 'Received',
+            approval_status TEXT NOT NULL DEFAULT 'Pending Level 1',
+            level1_approved INTEGER DEFAULT 0,
+            level1_user_id INTEGER,
+            level1_user_name TEXT,
+            level1_date DATETIME,
+            level1_notes TEXT,
+            level2_approved INTEGER DEFAULT 0,
+            level2_user_id INTEGER,
+            level2_user_name TEXT,
+            level2_date DATETIME,
+            level2_notes TEXT,
+            level3_approved INTEGER DEFAULT 0,
+            level3_user_id INTEGER,
+            level3_user_name TEXT,
+            level3_date DATETIME,
+            level3_notes TEXT,
+            queried_at_level INTEGER DEFAULT 0,
+            query_reason TEXT,
+            registrar_name TEXT,
+            collection_status TEXT NOT NULL DEFAULT 'Pending Collection',
+            collector_name TEXT,
+            collector_phone TEXT,
+            collected_date TEXT,
+            dispatch_waybill_no TEXT,
+            collection_method TEXT,
+            collection_proof_name TEXT,
+            collection_proof_path TEXT,
+            collection_notes TEXT,
+            file_name TEXT,
+            file_path TEXT,
+            remarks TEXT,
+            created_by INTEGER,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS status_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id INTEGER NOT NULL,
+            old_status TEXT,
+            new_status TEXT NOT NULL,
+            comment TEXT,
+            changed_by INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE,
+            FOREIGN KEY(changed_by) REFERENCES users(id) ON DELETE SET NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            document_id INTEGER,
+            action TEXT NOT NULL,
+            details TEXT,
+            ip_address TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE SET NULL
+        );
+        ");
+
+        $default_users = [
+            ['System Administrator', 'admin@regency.com', 'Admin@12345', 'Administrator'],
+            ['Fatokun Oluwaseun (Operations Staff)', 'staff@regency.com', 'Staff@12345', 'Staff'],
+            ['Adeola Johnson (Supervisor - L1 Approver)', 'supervisor@regency.com', 'Supervisor@12345', 'Supervisor'],
+            ['Babatunde Alabi (Operations Manager - L2 Approver)', 'opsmanager@regency.com', 'Manager@12345', 'Operations Manager'],
+            ['Chioma Okonkwo (Compliance Head - L3 Approver)', 'compliance@regency.com', 'Compliance@12345', 'Compliance Officer'],
+            ['Default Admin (Legacy)', 'admin@localhost', 'Admin@12345', 'Administrator']
+        ];
+        $st_u = $pdo->prepare("INSERT INTO users(name,email,password,role) VALUES(?,?,?,?)");
+        foreach ($default_users as $du) {
+            $st_u->execute([$du[0], $du[1], password_hash($du[2], PASSWORD_DEFAULT), $du[3]]);
+        }
+    }
+
     // Check if documents table exists
     $check = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='documents'")->fetchColumn();
     if ($check) {
