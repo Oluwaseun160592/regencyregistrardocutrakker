@@ -51,7 +51,7 @@ The system automatically initializes core tables and seeds all 5 operational rol
 | **Level 2: Ops Manager** | `opsmanager@regency.com` | `Manager@12345` | Validates broker-registrar unit reconciliation; approves L2 |
 | **Level 3: Compliance Officer** | `compliance@regency.com` | `Compliance@12345` | Regulatory sign-off, anti-fraud compliance, final release for dispatch |
 
-*(Legacy fallback admin account: `admin@localhost` / `Admin@12345`)*
+*(Legacy fallback admin account: `pl` / `Admin@12345`)*
 
 ---
 

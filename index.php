@@ -47,9 +47,6 @@ if ($page === 'login') {
         <div class="col-md-7 col-lg-5">
             <div class="card shadow-lg border-0" style="border-radius: 16px; overflow: hidden;">
                 <div class="p-4 text-center text-white" style="background: linear-gradient(135deg, #0b2545 0%, #134074 100%);">
-                    <div class="d-inline-flex align-items-center justify-content-center mb-3" style="width: 76px; height: 76px; border-radius: 50%; background: #ffffff; padding: 4px; box-shadow: 0 0 20px rgba(201, 168, 76, 0.55); border: 2.5px solid #c9a84c;">
-                        <img src="assets/regency_logo.png?v=<?= time() ?>" alt="<?= h(COMPANY_NAME) ?>" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
-                    </div>
                     <h4 class="mb-1 fw-bold"><?= h(COMPANY_NAME) ?></h4>
                     <p class="small text-white-50 mb-0"><?= h(COMPANY_SUBTITLE) ?></p>
                 </div>
@@ -711,14 +708,9 @@ if ($page === 'print_slip') {
         </div>
 
         <div class="title-box d-flex justify-content-between align-items-center">
-            <div class="d-flex align-items-center gap-3">
-                <div style="width: 58px; height: 58px; border-radius: 50%; background: #ffffff; padding: 3px; box-shadow: 0 0 12px rgba(201, 168, 76, 0.45); border: 2px solid #c9a84c; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                    <img src="assets/regency_logo.png?v=<?= time() ?>" alt="Regency Assets" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
-                </div>
-                <div>
-                    <div class="fw-bold" style="color:#0b2545; font-size: 16px;"><?= h(COMPANY_NAME) ?></div>
-                    <div class="small text-muted"><?= h(COMPANY_SUBTITLE) ?></div>
-                </div>
+            <div>
+                <div class="fw-bold" style="color:#0b2545; font-size: 18px;"><?= h(COMPANY_NAME) ?></div>
+                <div class="small text-muted"><?= h(COMPANY_SUBTITLE) ?></div>
             </div>
             <div class="text-end">
                 <div class="badge bg-dark fs-6 px-3 py-2"><?= h($d['reference_no']) ?></div>
@@ -833,7 +825,6 @@ function render_header($title, $auth = true) {
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title><?= h($title) ?> - <?= h(COMPANY_NAME) ?></title>
-        <link rel="icon" type="image/png" href="assets/regency_logo.png?v=<?= time() ?>">
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
         <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
         <style>
@@ -948,12 +939,9 @@ function render_header($title, $auth = true) {
         <div class="row g-0">
             <!-- Sidebar -->
             <aside class="col-md-3 col-lg-2 sidebar p-3 d-flex flex-column">
-                <div class="mb-4 text-center">
-                    <div class="d-inline-flex align-items-center justify-content-center mb-2" style="width: 58px; height: 58px; border-radius: 50%; background: #ffffff; padding: 3px; box-shadow: 0 0 16px rgba(201, 168, 76, 0.5); border: 2px solid #c9a84c;">
-                        <img src="assets/regency_logo.png?v=<?= time() ?>" alt="<?= h(COMPANY_NAME) ?>" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
-                    </div>
-                    <div class="small fw-bold text-white"><?= h(COMPANY_NAME) ?></div>
-                    <div style="font-size: 10px; color: #8da4be;"><?= h(COMPANY_SUBTITLE) ?></div>
+                <div class="mb-4 text-center pb-2 border-bottom border-secondary">
+                    <div class="fw-bold text-white" style="font-size: 14px; letter-spacing: 0.5px;"><?= h(COMPANY_NAME) ?></div>
+                    <div style="font-size: 10px; color: #8da4be; margin-top: 4px; line-height: 1.3;"><?= h(COMPANY_SUBTITLE) ?></div>
                 </div>
 
                 <div class="sidebar-heading">NAVIGATION</div>
